@@ -2,10 +2,11 @@ const express = require("express");
 const router = express.Router();
 require("dotenv").config();
 const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
 
 const { getDBConnection } = require("../../AppDAO");
 const {send400ErrorResponse, send500ErrorResponse} = require("./utils");
+
+const API_GATEWAY = process.env.GATEWAY_SERVICE || "http://localhost:3001"
 
 //returns all user based on userTypeId
 //for admin, userType = 1
@@ -28,10 +29,11 @@ router.get("/", async (req, res, next) => {
               return {
                 name: row.name,
                 id: row.id,
+                mobile: row.mobile,
                 email: row.email,
                 request: {
                   type: "GET",
-                  endpoint: "http://localhost:3000/user/" + row.id,
+                  endpoint:`${API_GATEWAY}/user/` + row.id,
                 },
               };
             }),
@@ -72,9 +74,10 @@ router.get("/:userId", (req, res, next) => {
               name: row.name,
               id: row.id,
               email: row.email,
+              mobile: row.mobile,
               request: {
                 type: "GET",
-                endpoint: "http://localhost:3000/user/" + row.id,
+                endpoint: `${API_GATEWAY}/user/` + row.id,
               },
             };
           }),
@@ -92,7 +95,7 @@ router.get("/:userId", (req, res, next) => {
 router.post("/", (req, res) => {
   try {
     const user = req.body;
-    if (!user || !(user.name && user.email && user.type)) {
+    if (!user || !(user.name && user.email && user.mobile && user.type)) {
       send400ErrorResponse(res);
       return;
     }
@@ -105,8 +108,8 @@ router.post("/", (req, res) => {
         return send500ErrorResponse(res, err, "hash passwod");
       } else {
         db.run(
-          `INSERT INTO User (name, email,pwd, type) VALUES (?,?,?,?)`,
-          [user.name, user.email, hash, user.type],
+          `INSERT INTO User (name, email,mobile, pwd, type) VALUES (?,?,?,?,?)`,
+          [user.name, user.email, user.mobile, hash, user.type],
           function (error) {
             if (error) {
               res.status(500).json({
@@ -118,10 +121,11 @@ router.post("/", (req, res) => {
                 createdUser: {
                   name: req?.body?.name,
                   email: req?.body?.email,
+                  mobile: req?.body?.mobile,
                   _id: this.lastID,
                   request: {
                     type: "GET",
-                    url: "http://localhost:3000/patient/" + this.lastID,
+                    url: `${API_GATEWAY}/user/` + this.lastID,
                   },
                 },
               });
@@ -137,7 +141,7 @@ router.post("/", (req, res) => {
   }
 });
 
-//update patient info
+//update user info
 router.put("/", (req, res, next) => {
   try {
     const user = req.body;
@@ -161,7 +165,46 @@ router.put("/", (req, res, next) => {
               ...user,
               request: {
                 type: "GET",
-                url: "http://localhost:3000/patient/" + user.id,
+                url: `${API_GATEWAY}/user/` + user.id,
+              },
+            },
+          });
+        } else {
+          send400ErrorResponse(res);
+        }
+      }
+    ).close;
+  } catch (error) {
+    console.log("error", error);
+    send500ErrorResponse(res);
+  }
+});
+
+//update user mobile no
+router.patch("/", (req, res, next) => {
+  try {
+    const user = req.body;
+    if (!user || !(user.id && user.mobile)) {
+      send400ErrorResponse(res);
+    }
+
+    const db = getDBConnection();
+    db.run(
+      `UPDATE User SET mobile=? WHERE id = ?`,
+      [user.mobile, user.id],
+      function (error) {
+        if (error) {
+          res.status(500).json({
+            message: "invalid data",
+          });
+        } else if (this.changes > 0) {
+          res.status(200).json({
+            message: "Updated Mobile no successfully",
+            updatedUser: {
+              ...user,
+              request: {
+                type: "GET",
+                url: `${API_GATEWAY}/user/` + user.id,
               },
             },
           });
@@ -195,7 +238,7 @@ router.delete("/:userId", (req, res, next) => {
             message: "User deleted",
             request: {
               type: "POST",
-              url: "http://localhost:3000/user",
+              url: `${API_GATEWAY}/user`,
               body: { name: "String", email: "String" },
             },
           });
